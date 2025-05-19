@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>What to Wear? 🌤️👕</title>
+<style>
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 20px;
+    transition: background-color 0.5s, color 0.5s;
+    background-color: #f0f0f0;
+    color: #111;
+  }
+  body.dark {
+    background-color: #121212;
+    color: #eee;
+  }
+  .overlay {
+    max-width: 600px;
+    margin: auto;
+    padding: 20px;
+    border-radius: 10px;
+    background-color: rgba(255,255,255,0.85);
+    transition: background-color 0.5s, color 0.5s;
+  }
+  body.dark .overlay {
+    background-color: rgba(0,0,0,0.7);
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  button {
+    cursor: pointer;
+    font-size: 16px;
+    padding: 6px 12px;
+    border-radius: 5px;
+    border: none;
+    background-color: #007bff;
+    color: white;
+    transition: background-color 0.3s;
+  }
+  button:hover {
+    background-color: #0056b3;
+  }
+  select, input[type=text] {
+    font-size: 16px;
+    padding: 6px;
+    margin-left: 8px;
+    border-radius: 5px;
+    border: 1px solid #888;
+  }
+  input[type=text] {
+    width: 180px;
+  }
+  .map-container {
+    margin-top: 15px;
+    height: 300px;
+    border-radius: 10px;
+    overflow: hidden;
+    display: none;
+  }
+  .map-container.show {
+    display: block;
+  }
+  ul.outfits {
+    list-style: none;
+    padding-left: 0;
+    font-size: 22px;
+  }
+  ul.outfits li {
+    margin-bottom: 8px;
+  }
+  .error {
+    color: red;
+    margin-top: 15px;
+    font-weight: bold;
+  }
+  footer {
+    margin-top: 30px;
+    font-size: 14px;
+    text-align: center;
+    opacity: 0.6;
+  }
+</style>
+</head>
+<body>
+  <div class="overlay" id="app">
+    <header>
+      <h1>What to Wear? 🌤️👕</h1>
+      <button id="darkModeToggle">🌙 Dark Mode</button>
+    </header>
+
+    <div style="margin-top: 15px;">
+      <label>Temperature Unit:
+        <button id="unitToggle">°C</button>
+      </label>
+    </div>
+
+    <div style="margin-top: 15px;">
+      <label for="activitySelect">Select Activity:
+        <select id="activitySelect">
+          <option value="casual">Casual</option>
+          <option value="workout">Workout</option>
+          <option value="formal">Formal</option>
+        </select>
+      </label>
+    </div>
+
+    <div style="margin-top: 15px;">
+      <button id="toggleMapBtn">Show Map 🗺️</button>
+    </div>
+
+    <div style="margin-top: 15px;">
+      <label>Search City:
+        <input type="text" id="cityInput" placeholder="Enter city and press Enter" />
+      </label>
+    </div>
+
+    <div class="map-container" id="mapContainer">
+      <iframe
+        id="mapFrame"
+        src=""
+        width="100%"
+        height="300"
+        style="border:none;"
+        loading="lazy"
+        referrerpolicy="no-referrer-when-downgrade"
+      ></iframe>
+    </div>
+
+    <div id="weatherInfo" style="margin-top: 20px;"></div>
+    <div id="error" class="error"></div>
+
+    <footer>Powered by Open-Meteo & OpenStreetMap</footer>
+  </div>
+
+<script>
+  const darkModeToggle = document.getElementById("darkModeToggle");
+  const unitToggle = document.getElementById("unitToggle");
+  const activitySelect = document.getElementById("activitySelect");
+  const toggleMapBtn = document.getElementById("toggleMapBtn");
+  const mapContainer = document.getElementById("mapContainer");
+  const mapFrame = document.getElementById("mapFrame");
+  const cityInput = document.getElementById("cityInput");
+  const weatherInfo = document.getElementById("weatherInfo");
+  const errorDiv = document.getElementById("error");
+
+  let darkMode = false;
+  let useCelsius = true;
+  let currentCoords = null;
+  let currentCity = null;
+
+  const outfitSuggestions = {
+    casual: {
+      cold: ["🧥 Jacket", "🧣 Scarf", "🧤 Gloves"],
+      cool: ["👕 Long Sleeve", "👖 Jeans"],
+      warm: ["👕 T-shirt", "🩳 Shorts"],
+      hot: ["👚 Tank Top", "🩳 Shorts", "🕶️ Sunglasses"],
+    },
+    workout: {
+      cold: ["🏋️ Hoodie", "🧤 Gloves"],
+      cool: ["🤸‍♂️ Long Sleeve Tee", "🏃‍♂️ Joggers"],
+      warm: ["🏃‍♂️ Tank Top", "🩳 Shorts"],
+      hot: ["🧢 Cap", "🩳 Shorts", "💧 Water Bottle"],
+    },
+    formal: {
+      cold: ["🧥 Coat", "👔 Shirt", "👖 Dress Pants"],
+      cool: ["👔 Shirt", "👖 Dress Pants"],
+      warm: ["👔 Shirt", "👖 Dress Pants"],
+      hot: ["👔 Light Shirt", "🩳 Dress Shorts"],
+    },
+  };
+
+  function tempCategory(tempC) {
+    if (tempC <= 5) return "cold";
+    if (tempC <= 15) return "cool";
+    if (tempC <= 25) return "warm";
+    return "hot";
+  }
+
+  function formatTemp(tempC) {
+    if (useCelsius) return `${tempC.toFixed(1)} °C`;
+    else return `${(tempC * 9 / 5 + 32).toFixed(1)} °F`;
+  }
+
+  function getOutfit(activity, tempC) {
+    const cat = tempCategory(tempC);
+    return outfitSuggestions[activity][cat];
+  }
+
+  function renderWeather(data, city) {
+    errorDiv.textContent = "";
+    currentCity = city;
+    const tempC = data.current_weather.temperature;
+    const description = data.current_weather.weathercodeDescription || "Weather";
+
+    const activity = activitySelect.value;
+    const outfits = getOutfit(activity, tempC);
+
+    let html = `<h2>${city}</h2>`;
+    html += `<p style="font-size:24px;">${formatTemp(tempC)} - ${description}</p>`;
+    html += `<h3>Outfit Suggestions for ${activity.charAt(0).toUpperCase() + activity.slice(1)}:</h3>`;
+    html += "<ul class='outfits'>";
+    outfits.forEach(item => {
+      html += `<li>${item}</li>`;
+    });
+    html += "</ul>";
+
+    weatherInfo.innerHTML = html;
+  }
+
+  function setMapLocation(lat, lon) {
+    // OpenStreetMap embed with city coordinates and zoom
+    mapFrame.src = `https://www.openstreetmap.org/export/embed.html?bbox=${lon-0.05}%2C${lat-0.05}%2C${lon+0.05}%2C${lat+0.05}&layer=mapnik&marker=${lat}%2C${lon}`;
+  }
+
+  async function fetchWeather(lat, lon, cityName = "Current Location") {
+    errorDiv.textContent = "";
+    weatherInfo.textContent = "Loading weather data...";
+    try {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&timezone=auto`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Failed to fetch weather data.");
+      const data = await res.json();
+
+      // Open-Meteo weathercode to description
+      data.current_weather.weathercodeDescription = weatherCodeToDesc(data.current_weather.weathercode);
+
+      renderWeather(data, cityName);
+      setMapLocation(lat, lon);
+      currentCoords = { lat, lon };
+    } catch (e) {
+      errorDiv.textContent = e.message;
+      weatherInfo.textContent = "";
+    }
+  }
+
+  // Geocoding city name to lat/lon via Open-Meteo geocoding API
+  async function geocodeCity(city) {
+    try {
+      const res = await fetch(
+        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1`
+      );
+      if (!res.ok) throw new Error("Failed to geocode city.");
+      const data = await res.json();
+      if (!data.results || data.results.length === 0) throw new Error("City not found.");
+      return data.results[0];
+    } catch (e) {
+      throw e;
+    }
+  }
+
+  function weatherCodeToDesc(code) {
+    // Codes from https://open-meteo.com/en/docs#latitude=52.52&longitude=13.41&hourly=temperature_2m
+    const map = {
+      0: "Clear sky",
+      1: "Mainly clear",
+      2: "Partly cloudy",
+      3: "Overcast",
+      45: "Fog",
+      48: "Depositing rime fog",
+      51: "Light drizzle",
+      53: "Moderate drizzle",
+      55: "Dense drizzle",
+      56: "Light freezing drizzle",
+      57: "Dense freezing drizzle",
+      61: "Slight rain",
+      63: "Moderate rain",
+      65: "Heavy rain",
+      66: "Light freezing rain",
+      67: "Heavy freezing rain",
+      71: "Slight snow fall",
+      73: "Moderate snow fall",
+      75: "Heavy snow fall",
+      77: "Snow grains",
+      80: "Slight rain showers",
+      81: "Moderate rain showers",
+      82: "Violent rain showers",
+      85: "Slight snow showers",
+      86: "Heavy snow showers",
+      95: "Thunderstorm",
+      96: "Thunderstorm with slight hail",
+      99: "Thunderstorm with heavy hail",
+    };
+    return map[code] || "Unknown weather";
+  }
+
+  // Handle dark mode toggle
+  darkModeToggle.onclick = () => {
+    darkMode = !darkMode;
+    if (darkMode) {
+      document.body.classList.add("dark");
+      darkModeToggle.textContent = "☀️ Light Mode";
+    } else {
+      document.body.classList.remove("dark");
+      darkModeToggle.textContent = "🌙 Dark Mode";
+    }
+  };
+
+  // Handle temperature unit toggle
+  unitToggle.onclick = () => {
+    useCelsius = !useCelsius;
+    unitToggle.textContent = useCelsius ? "°C" : "°F";
+    if (currentCoords) {
+      fetchWeather(currentCoords.lat, currentCoords.lon, currentCity);
+    }
+  };
+
+  // Handle activity change
+  activitySelect.onchange = () => {
+    if (currentCoords) {
+      fetchWeather(currentCoords.lat, currentCoords.lon, currentCity);
+    }
+  };
+
+  // Handle map show/hide
+  toggleMapBtn.onclick = () => {
+    if (mapContainer.classList.contains("show")) {
+      mapContainer.classList.remove("show");
+      toggleMapBtn.textContent = "Show Map 🗺️";
+    } else {
+      mapContainer.classList.add("show");
+      toggleMapBtn.textContent = "Hide Map 🗺️";
+    }
+  };
+
+  // Handle city search input enter key
+  cityInput.addEventListener("keydown", async (e) => {
+    if (e.key === "Enter") {
+      const city = cityInput.value.trim();
+      if (!city) return;
+      errorDiv.textContent = "";
+      weatherInfo.textContent = "Searching city...";
+      try {
+        const result = await geocodeCity(city);
+        await fetchWeather(result.latitude, result.longitude, result.name);
+        if (!mapContainer.classList.contains("show")) {
+          mapContainer.classList.add("show");
+          toggleMapBtn.textContent = "Hide Map 🗺️";
+        }
+      } catch (err) {
+        errorDiv.textContent = err.message;
+        weatherInfo.textContent = "";
+      }
+    }
+  });
+
+  // Initial: get geolocation and fetch weather
+  if ("geolocation" in navigator) {
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        fetchWeather(pos.coords.latitude, pos.coords.longitude, "Your Location");
+      },
+      () => {
+        errorDiv.textContent = "Geolocation permission denied. Please search a city.";
+        weatherInfo.textContent = "";
+      }
+    );
+  } else {
+    errorDiv.textContent = "Geolocation not supported by your browser.";
+  }
+</script>
+</body>
+</html>
