@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>What to Wear? 🌤️👕</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f0f0f0;
+      color: #111;
+      transition: background-color 0.5s, color 0.5s;
+    }
+    .overlay {
+      max-width: 600px;
+      margin: auto;
+      padding: 20px;
+      border-radius: 12px;
+      background-color: rgba(255,255,255,0.9);
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    body.dark { background: #121212; color: #eee; }
+    body.dark .overlay { background-color: rgba(20,20,20,0.9); }
+    body.retro { background: #fffbe6; color: #5b4636; }
+    body.retro .overlay { background-color: rgba(255, 255, 224, 0.95); box-shadow: 5px 5px 15px #d2b48c; }
+    body.vaporwave {
+      background: linear-gradient(135deg, #f72585, #720026);
+      color: #e0c3fc;
+    }
+    body.vaporwave .overlay {
+      background: rgba(18, 0, 33, 0.8);
+      box-shadow: 0 0 12px #ff00ff;
+    }
+
+    input, select {
+      padding: 10px;
+      font-size: 1rem;
+      margin: 5px 0;
+      border-radius: 8px;
+      border: 1px solid #888;
+      width: 100%;
+    }
+
+    button {
+      padding: 10px;
+      font-size: 1rem;
+      margin: 5px 0;
+      border-radius: 8px;
+      border: 1px solid #888;
+      width: 100%;
+      cursor: pointer;
+      transition: background-color 0.4s, color 0.4s, border-color 0.4s;
+    }
+
+    /* Theme-specific button colors */
+    body.light button {
+      background-color: #007bff;
+      color: white;
+    }
+
+    body.dark button {
+      background-color: #0d6efd;
+      color: white;
+      border: none;
+    }
+
+    body.retro button {
+      background-color: #d2b48c;
+      color: #5b4636;
+      border: 1px solid #5b4636;
+    }
+
+    body.vaporwave button {
+      background-color: #ff00ff;
+      color: white;
+      border: none;
+    }
+
+    .map-container { height: 300px; border-radius: 10px; margin-top: 10px; }
+    #map { height: 100%; }
+
+    .theme-container { margin-top: 20px; text-align: center; }
+    .info-box {
+      border-radius: 10px;
+      padding: 15px;
+      margin-top: 15px;
+      transition: background-color 0.5s;
+    }
+
+    body.light .info-box { background-color: #e0f7fa; }
+    body.dark .info-box { background-color: #1e1e1e; }
+    body.retro .info-box { background-color: #fceabb; }
+    body.vaporwave .info-box { background-color: #3a0ca3; color: #fff; }
+
+    ul.outfits { list-style: none; padding-left: 0; font-size: 1.1rem; }
+    ul.outfits li { margin-bottom: 6px; }
+  </style>
+</head>
+<body class="light">
+  <div class="overlay">
+    <h1>What to Wear? 🌤️👕</h1>
+    <input id="cityInput" type="text" placeholder="Enter city..." />
+    <button id="searchBtn">Search</button>
+    <button id="locateBtn">Use My Location 📍</button>
+
+    <label for="unitToggle">Temperature Unit:</label>
+    <button id="unitToggle">°F</button>
+
+    <label for="activitySelect">Select Activity:</label>
+    <select id="activitySelect">
+      <option value="casual">Casual</option>
+      <option value="workout">Workout</option>
+      <option value="formal">Formal</option>
+    </select>
+
+    <div class="map-container"><div id="map"></div></div>
+
+    <div id="loading" style="margin-top:10px; display:none;">Loading...</div>
+    <div id="error" style="color:red;"></div>
+    <div id="weatherInfo" class="info-box"></div>
+
+    <div class="theme-container">
+      <label for="themeSelect">Theme:</label>
+      <select id="themeSelect">
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+        <option value="retro">Retro</option>
+        <option value="vaporwave">Vaporwave</option>
+      </select>
+    </div>
+
+    <footer style="margin-top: 20px; text-align: center; font-size: 0.8rem; opacity: 0.6;">
+      Powered by TheKaister 🤟 
+    </footer>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const weatherEmojis = {
+      0: "☀️ Clear", 1: "🌤️ Mostly Clear", 2: "⛅ Partly Cloudy", 3: "☁️ Overcast",
+      45: "🌫️ Fog", 48: "🌫️ Rime Fog", 51: "🌦️ Light Drizzle", 53: "🌧️ Drizzle",
+      55: "🌧️ Heavy Drizzle", 61: "🌧️ Light Rain", 63: "🌧️ Rain", 65: "🌧️ Heavy Rain",
+      66: "🌧️ Freezing Rain", 67: "❄️ Freezing Rain", 71: "🌨️ Light Snow",
+      73: "🌨️ Snow", 75: "❄️ Heavy Snow", 80: "🌦️ Showers", 81: "🌧️ Showers",
+      82: "⛈️ Thunder Showers", 95: "⛈️ Thunderstorm", 96: "⛈️ + Hail", 99: "🌩️ + Hail"
+    };
+
+    const outfits = {
+      casual: {
+        cold: ["🧥 Jacket", "🧣 Scarf", "🧤 Gloves"],
+        cool: ["👕 Long Sleeve", "👖 Jeans"],
+        warm: ["👕 T-shirt", "🩳 Shorts"],
+        hot: ["👚 Tank Top", "🩳 Shorts", "🕶️ Sunglasses"],
+      },
+      workout: {
+        cold: ["🏋️ Hoodie", "🧤 Gloves"],
+        cool: ["🤸‍♂️ Long Sleeve Tee", "🏃‍♂️ Joggers"],
+        warm: ["🏃‍♂️ Tank Top", "🩳 Shorts"],
+        hot: ["🩳 Shorts", "💧 Sweatband", "🕶️ Sunglasses"],
+      },
+      formal: {
+        cold: ["🧥 Suit Jacket", "👔 Shirt", "🧣 Scarf"],
+        cool: ["👔 Shirt", "👖 Dress Pants"],
+        warm: ["👔 Shirt", "👖 Light Pants"],
+        hot: ["👔 Light Shirt", "🕶️ Sunglasses"],
+      },
+    };
+
+    const searchBtn = document.getElementById("searchBtn");
+    const locateBtn = document.getElementById("locateBtn");
+    const cityInput = document.getElementById("cityInput");
+    const unitToggle = document.getElementById("unitToggle");
+    const activitySelect = document.getElementById("activitySelect");
+    const themeSelect = document.getElementById("themeSelect");
+    const weatherInfo = document.getElementById("weatherInfo");
+    const errorDiv = document.getElementById("error");
+    const loadingDiv = document.getElementById("loading");
+
+    let useCelsius = false;
+    let map, marker;
+
+    function cToF(c) { return (c * 9) / 5 + 32; }
+    function tempCategory(c) {
+      const f = cToF(c);
+      if (f < 41) return "cold";
+      if (f < 60) return "cool";
+      if (f < 77) return "warm";
+      return "hot";
+    }
+
+    async function reverseGeocode(lat, lon) {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`);
+      const data = await res.json();
+      return data.display_name || "Your Location";
+    }
+
+    function displayWeather(data, locationName) {
+      const tempC = data.temperature;
+      const tempF = cToF(tempC).toFixed(1);
+      const temp = useCelsius ? `${tempC} °C` : `${tempF} °F`;
+      const wind = (data.windspeed * 3.6).toFixed(1);
+      const condition = weatherEmojis[data.weathercode] || "❓ Unknown";
+
+      const activity = activitySelect.value;
+      const category = tempCategory(tempC);
+      const outfit = outfits[activity][category].map(o => `<li>${o}</li>`).join("");
+
+      weatherInfo.innerHTML = `
+        <h2>${locationName}</h2>
+        <p><strong>🌡️ Temp:</strong> ${temp}</p>
+        <p><strong>${condition}</strong></p>
+        <p><strong>💨 Wind:</strong> ${wind} km/h</p>
+        <h3>👕 Outfit (${activity}):</h3>
+        <ul class="outfits">${outfit}</ul>
+      `;
+    }
+
+    async function getWeather(lat, lon) {
+      errorDiv.textContent = "";
+      loadingDiv.style.display = "block";
+      try {
+        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
+        const data = await res.json();
+        const locName = await reverseGeocode(lat, lon);
+        loadingDiv.style.display = "none";
+        displayWeather(data.current_weather, locName);
+        updateMap(lat, lon, locName);
+      } catch (err) {
+        loadingDiv.style.display = "none";
+        errorDiv.textContent = "Failed to fetch weather.";
+      }
+    }
+
+    async function getCoordsFromCity(city) {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(city)}&limit=1`);
+      const data = await res.json();
+      if (data.length === 0) throw new Error("City not found");
+      return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+    }
+
+    function updateMap(lat, lon, name) {
+      if (!map) {
+        map = L.map("map").setView([lat, lon], 10);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: "© OpenStreetMap contributors"
+        }).addTo(map);
+        map.on("click", e => getWeather(e.latlng.lat, e.latlng.lng));
+      } else {
+        map.setView([lat, lon], 10);
+      }
+
+      if (marker) {
+        marker.setLatLng([lat, lon]).setPopupContent(name).openPopup();
+      } else {
+        marker = L.marker([lat, lon]).addTo(map).bindPopup(name).openPopup();
+      }
+    }
+
+    searchBtn.onclick = async () => {
+      const city = cityInput.value.trim();
+      if (!city) return (errorDiv.textContent = "Enter a city name.");
+      try {
+        const coords = await getCoordsFromCity(city);
+        getWeather(coords.lat, coords.lon);
+      } catch (e) {
+        errorDiv.textContent = e.message;
+      }
+    };
+
+    locateBtn.onclick = () => {
+      navigator.geolocation.getCurrentPosition(
+        pos => getWeather(pos.coords.latitude, pos.coords.longitude),
+        () => errorDiv.textContent = "Could not access location."
+      );
+    };
+
+    unitToggle.onclick = () => {
+      useCelsius = !useCelsius;
+      unitToggle.textContent = useCelsius ? "°C" : "°F";
+      if (marker) {
+        const { lat, lng } = marker.getLatLng();
+        getWeather(lat, lng);
+      }
+    };
+
+    activitySelect.onchange = () => {
+      if (marker) {
+        const { lat, lng } = marker.getLatLng();
+        getWeather(lat, lng);
+      }
+    };
+
+    themeSelect.onchange = () => {
+      document.body.className = themeSelect.value;
+    };
+
+    window.onload = () => {
+      getWeather(40.7128, -74.0060); // Default to NYC
+    };
+  </script>
+</body>
+</html>
